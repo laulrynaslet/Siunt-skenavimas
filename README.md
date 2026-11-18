@@ -1,1 +1,1 @@
-# Siunt-skenavimas
+# Siuntų skenavimas
