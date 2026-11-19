@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>Siuntų skenavimas</title>
+<style>
+:root{color-scheme:dark;--bg:#0f172a;--panel:#1e293b;--line:#334155;--text:#f8fafc;--muted:#94a3b8;--accent:#38bdf8;--ok:#22c55e;--warn:#f59e0b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,-apple-system,Segoe UI,sans-serif;padding:16px;max-width:760px;margin-inline:auto}
+h1{font-size:1.45rem;margin:4px 0 14px}.sub{color:var(--muted);font-size:.9rem;margin-bottom:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0}
+video{width:100%;max-height:48vh;background:#020617;border-radius:12px;object-fit:cover}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button{border:0;border-radius:12px;padding:13px 16px;font-weight:700;font-size:1rem;background:var(--accent);color:#082f49;flex:1;min-width:130px}
+button.secondary{background:#334155;color:var(--text)}button.danger{background:#7f1d1d;color:#fff}
+.status{padding:10px 12px;border-radius:10px;background:#0f172a;color:var(--muted);margin-top:10px}
+.status.ok{color:#bbf7d0}.status.warn{color:#fde68a}
+.big{font-size:1.2rem;font-weight:750;overflow-wrap:anywhere}.muted{color:var(--muted)}
+textarea{width:100%;min-height:76px;padding:12px;border-radius:10px;border:1px solid var(--line);background:#0f172a;color:white;font:inherit} input[type=file]{padding:8px} input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#0f172a;color:white;font-size:1rem}
+table{width:100%;border-collapse:collapse;font-size:.9rem}td,th{text-align:left;padding:9px 5px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}th{color:var(--muted)}
+.ship{padding:10px 0;border-bottom:1px solid var(--line)}.ship:last-child{border:0}
+.small{font-size:.82rem;color:var(--muted)}
+.itembox{border:1px solid var(--line);border-radius:12px;padding:0;margin:8px 0;overflow:hidden}.itembox>summary{cursor:pointer;list-style:none;padding:12px;font-weight:700;display:flex;flex-direction:column;gap:4px}.itembox>summary::-webkit-details-marker{display:none}.itembox>summary:after{content:"＋";position:absolute;right:28px;color:var(--muted)}.itembox[open]>summary:after{content:"−"}.item-head-code{font-size:.82rem;color:var(--muted);font-weight:400}.item-controls{padding:0 10px 10px}.item-controls input{margin:5px 0}.itempics img{width:72px;height:72px;object-fit:cover;border-radius:8px;margin:4px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<h1>Siuntų skenavimas</h1>
+<div class="sub">Paspausk „SKENUOTI BARKODĄ“. Kamera nuskaitys vieną kodą ir automatiškai išsijungs.</div>
+
+<section class="panel">
+  <video id="video" playsinline muted></video>
+  <div class="row">
+    <button id="start">SKENUOTI BARKODĄ</button>
+    <button id="stop" class="secondary" disabled>Stabdyti</button>
+  </div>
+  <div id="status" class="status">Kamera išjungta. Paspausk „SKENUOTI BARKODĄ“.</div>
+  <div class="small" style="margin-top:8px">Pastaba: norint naudoti kamerą, puslapis turi būti atidarytas per HTTPS nuorodą (saugų interneto adresą).</div>
+</section>
+
+<section class="panel">
+  <div class="muted">Aktyvi siunta</div>
+  <div id="active" class="big">Dar nenuskenuota</div>
+  <div id="last" class="small" style="margin-top:8px">Paskutinis nuskaitymas: –</div>
+</section>
+
+<section class="panel">
+  <div class="row" style="margin-top:0;align-items:center">
+    <div style="flex:1"><div class="muted">Siuntų skaičius</div><div id="shipCount" class="big">0</div></div>
+    <div style="flex:1"><div class="muted">Prekių vienetai</div><div id="unitCount" class="big">0</div></div>
+  </div>
+</section>
+
+<section class="panel">
+  <b>Suvestinė</b>
+  <div id="summary" class="muted" style="margin-top:10px">Kol kas duomenų nėra.</div>
+</section>
+
+<section class="panel">
+  <b>Rankinis įvedimas (jei kamera neatpažįsta kodo)</b>
+  <input id="manual" autocomplete="off" placeholder="Įvesk arba nuskaityk kodą">
+  <div class="row"><button id="addManual" class="secondary">Pridėti kodą</button></div>
+</section>
+
+<section class="panel">
+  <b>Duomenys</b>
+  <div class="row">
+    <button id="xlsx">Atsisiųsti Excel (XLSX)</button>
+    <button id="backup" class="secondary">Atsarginė kopija</button>
+  </div>
+  <div class="row"><button id="clear" class="danger">Ištrinti visus duomenis</button></div>
+  <div class="small" style="margin-top:8px">Duomenys saugomi šiame telefone ir šioje naršyklėje. Išvalius naršyklės duomenis, jie gali dingti – periodiškai atsisiųsk Excel arba atsarginę kopiją. Nuotraukos sumažinamos, kad užimtų mažiau vietos telefone. Suvestinėje galima keisti siuntos kodą, ištrinti siuntą, koreguoti prekių kiekius arba ištrinti atskirą prekę.</div>
+</section>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const STORAGE_KEY = 'siuntu_skenavimas_v2';
+  let shipments = [];
+  let stream = null, detector = null, running = false, scanBusy = false;
+  let lastCode = '', lastSeen = 0, lastAcceptedAt = 0;
+  try { shipments = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); shipments.forEach(sh=>{ sh.items=(sh.items||[]).map(it=>({...it,comment:it.comment||'',photos:it.photos||[]})); }); } catch(e) { shipments = []; }
+
+  function save(){ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(shipments)); } catch(e) { setStatus('Nepavyko išsaugoti duomenų naršyklėje.', 'warn'); } }
+  function setStatus(msg, type=''){ $('status').textContent=msg; $('status').className='status '+type; }
+  function totalUnits(){ return shipments.reduce((s,sh)=>s+sh.items.reduce((a,it)=>a+it.qty,0),0); }
+  function render(){
+    const active = shipments.length ? shipments[shipments.length-1] : null;
+    $('active').textContent = active ? active.code : 'Dar nenuskenuota';
+    $('shipCount').textContent = shipments.length;
+    $('unitCount').textContent = totalUnits();
+    if(!shipments.length){ $('summary').textContent='Kol kas duomenų nėra.'; return; }
+    $('summary').innerHTML = shipments.map((sh,i)=>{
+      const rows = sh.items.length ? sh.items.map((it,j)=>{
+        it.comment=it.comment||''; it.photos=it.photos||[];
+        const pics=it.photos.map((src,k)=>`<img src="${src}" alt="Prekės nuotrauka ${k+1}">`).join('');
+        const searchUrl='https://www.senukai.lt/search?q='+encodeURIComponent(it.code);
+        return `<details class="itembox"><summary><span>Prekė ${j+1}</span><span class="item-head-code">Barkodas: ${escapeHtml(it.code)} · Kiekis: ${it.qty}</span></summary><div class="item-controls"><div class="row"><button type="button" class="danger" data-del-item="${i}" data-item="${j}" style="min-width:70px">Ištrinti prekę</button></div><label class="small">Kiekis</label><input aria-label="Kiekis" type="number" min="1" step="1" value="${it.qty}" data-qty="${i}" data-item="${j}" style="max-width:110px"><label class="small">Komentaras apie šią prekę</label><textarea data-item-comment="${i}" data-item="${j}" placeholder="Pvz. pakuotė pažeista">${escapeHtml(it.comment)}</textarea><label class="small">Nuotraukos prie šios prekės</label><div class="itempics">${pics}</div><input type="file" accept="image/*" capture="environment" multiple data-item-photos="${i}" data-item="${j}"></div></details>`;
+      }).join('') : '<div class="small">Prekių dar nėra</div>';
+      return `<div class="ship"><b>Siunta ${i+1}</b><div class="row"><input aria-label="Siuntos kodas" value="${escapeHtml(sh.code)}" data-shipment-code="${i}"><button type="button" class="secondary" data-save-code="${i}" style="min-width:110px">Keisti kodą</button></div><div class="small">Skenavimo data: ${escapeHtml(sh.time ? new Date(sh.time).toLocaleString('lt-LT') : '')} · Prekių vienetai: ${sh.items.reduce((a,it)=>a+it.qty,0)}</div>${rows}<div class="row"><button type="button" class="danger" data-del-shipment="${i}">Ištrinti siuntą</button></div></div>`;
+    }).join('');
+  }
+  $('summary').addEventListener('input',e=>{ if(e.target.matches('[data-item-comment]')){const i=Number(e.target.dataset.itemComment), j=Number(e.target.dataset.item); if(shipments[i]?.items[j]){shipments[i].items[j].comment=e.target.value;save();}} });
+  $('summary').addEventListener('change',async e=>{ if(!e.target.matches('[data-item-photos]')) return; const i=Number(e.target.dataset.itemPhotos), j=Number(e.target.dataset.item); if(!shipments[i]?.items[j]) return; const files=Array.from(e.target.files||[]); for(const file of files){ try{ const data=await compressImage(file); shipments[i].items[j].photos=shipments[i].items[j].photos||[]; shipments[i].items[j].photos.push(data); }catch(err){setStatus('Nepavyko įkelti nuotraukos: '+err.message,'warn');} } save(); render(); setStatus('Nuotraukos pridėtos prie prekės.','ok'); });
+  $('summary').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    if(b.hasAttribute('data-save-code')){
+      const i=Number(b.dataset.saveCode), field=$('summary').querySelector(`[data-shipment-code="${i}"]`);
+      if(shipments[i] && field && field.value.trim()){ shipments[i].code=field.value.trim(); save(); render(); setStatus('Siuntos kodas pakeistas.','ok'); }
+    }
+    if(b.hasAttribute('data-del-shipment')){
+      const i=Number(b.dataset.delShipment);
+      if(shipments[i] && confirm(`Ar tikrai ištrinti siuntą ${shipments[i].code} kartu su jos prekėmis, komentaru ir nuotraukomis?`)){
+        shipments.splice(i,1); save(); render(); setStatus('Siunta ištrinta.','ok');
+      }
+    }
+    if(b.hasAttribute('data-del-item')){
+      const i=Number(b.dataset.delItem), j=Number(b.dataset.item);
+      if(shipments[i] && shipments[i].items[j] && confirm('Ištrinti šią prekę iš siuntos?')){
+        shipments[i].items.splice(j,1); save(); render(); setStatus('Prekė ištrinta.','ok');
+      }
+    }
+  });
+  $('summary').addEventListener('change',e=>{
+    if(e.target.matches('[data-qty]')){
+      const i=Number(e.target.dataset.qty), j=Number(e.target.dataset.item), qty=Math.floor(Number(e.target.value));
+      if(shipments[i] && shipments[i].items[j]){
+        if(Number.isFinite(qty) && qty>=1){ shipments[i].items[j].qty=qty; save(); render(); setStatus('Prekės kiekis pakeistas.','ok'); }
+        else { render(); setStatus('Kiekis turi būti bent 1.','warn'); }
+      }
+    }
+  });
+  function compressImage(file){ return new Promise((resolve,reject)=>{ const img=new Image(), url=URL.createObjectURL(file); img.onload=()=>{ const scale=Math.min(1,1200/Math.max(img.width,img.height)); const c=document.createElement('canvas'); c.width=Math.round(img.width*scale); c.height=Math.round(img.height*scale); c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg',0.72)); }; img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('netinkamas vaizdo failas'));}; img.src=url; }); }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function processCode(raw, format=''){
+    let code = String(raw).trim().replace(/\s+/g,'');
+    if(!code) return;
+    // DPD: iš viso barkodo paliekamas tik 14 skaitmenų siuntos numeris.
+    const dpdMatch = code.match(/^%?0054340(\d{14})101440$/);
+    const isDpdShipment = Boolean(dpdMatch);
+    if(isDpdShipment) code = dpdMatch[1];
+    const isShipment = isDpdShipment || (format === 'code_128' && (/[^0-9]/.test(code) || code.startsWith('%')));
+    const isManualShipment = !isDpdShipment && !format && /[^0-9]/.test(code);
+    if(isShipment || isManualShipment){
+      shipments.push({code, items:[], comment:'', photos:[], time:new Date().toISOString()});
+      $('last').textContent='Paskutinis nuskaitymas: nauja siunta';
+      setStatus('Siunta atpažinta (CODE 128).', 'ok');
+    } else if(/^\d{1,14}$/.test(code)){
+      if(!shipments.length){ setStatus('Pirmiausia nuskenuok siuntos lipduką.', 'warn'); return false; }
+      const sh=shipments[shipments.length-1];
+      const found=sh.items.find(x=>x.code===code);
+      if(found) found.qty++; else sh.items.push({code,qty:1});
+      $('last').textContent='Paskutinis nuskaitymas: prekė '+code;
+      setStatus('Prekė pridėta prie aktyvios siuntos.', 'ok');
+    } else {
+      setStatus('Neatpažintas kodas. Siuntos lipdukas turi būti CODE 128 su raidėmis arba simboliais, o prekės kodas – tik skaitmenys (iki 14 skaitmenų). Nuskaityta: ['+code+']; tipas: '+(format||'rankinis įvedimas'), 'warn');
+      return;
+    }
+    save(); render();
+    if(navigator.vibrate) navigator.vibrate(45);
+    return true;
+  }
+  async function start(){
+    if(!('BarcodeDetector' in window)){ setStatus('Ši naršyklė nepalaiko tiesioginio brūkšninių kodų atpažinimo. Reikės kitos naršyklės arba skenavimo bibliotekos.', 'warn'); return; }
+    try{
+      const formats = await BarcodeDetector.getSupportedFormats();
+      const wanted = ['code_128','ean_13','ean_8','upc_a','upc_e','itf','code_39','codabar'];
+      const supported = wanted.filter(f=>formats.includes(f));
+      if(!supported.length){ setStatus('Telefonas nerado palaikomo brūkšninio kodo formato.', 'warn'); return; }
+      detector = new BarcodeDetector({formats:supported});
+      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+      $('video').srcObject=stream; await $('video').play();
+      running=true; $('start').disabled=true; $('stop').disabled=false;
+      setStatus('Kamera įjungta. Laukiama vieno barkodo nuskaitymo…', 'ok');
+      scanLoop();
+    }catch(e){ setStatus('Nepavyko įjungti kameros: '+(e.message||e)+'. Patikrink kameros leidimą ir ar puslapis atidarytas per HTTPS.', 'warn'); }
+  }
+  async function scanLoop(){
+    if(!running || scanBusy) return;
+    scanBusy=true;
+    try{
+      const results=await detector.detect($('video'));
+      const now=Date.now();
+      if(results.length){
+        const code=results[0].rawValue;
+        const format=results[0].format || '';
+        lastSeen=now;
+        // Accept a code once; it can be scanned again after it leaves the frame for 1.2 s.
+        if(code && (code!==lastCode || now-lastAcceptedAt>5000) && now-lastAcceptedAt>700){
+          lastCode=code; lastAcceptedAt=now;
+          const accepted = processCode(code,format);
+          if(accepted){
+            stop('Barkodas nuskaitytas. Kamera išjungta. Kitam nuskaitymui paspausk mygtuką dar kartą.', 'ok');
+          }
+        }
+      } else if(now-lastSeen>1200){
+        lastCode='';
+      }
+    }catch(e){}
+    scanBusy=false;
+    if(running) requestAnimationFrame(scanLoop);
+  }
+  function stop(message='Kamera sustabdyta.', type=''){
+    running=false; if(stream) stream.getTracks().forEach(t=>t.stop()); stream=null;
+    $('video').srcObject=null; $('start').disabled=false; $('stop').disabled=true;
+    setStatus(message, type);
+  }
+  function download(name, content, type){
+    const blob=new Blob([content],{type}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+  $('start').addEventListener('click',start); $('stop').addEventListener('click',stop);
+  $('addManual').addEventListener('click',()=>{processCode($('manual').value);$('manual').value='';});
+  $('manual').addEventListener('keydown',e=>{if(e.key==='Enter'){$('addManual').click();}});
+  $('xlsx').addEventListener('click',async()=>{
+    try{
+      if(!window.ExcelJS){ await new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';sc.onload=resolve;sc.onerror=()=>reject(new Error('Nepavyko įkelti Excel kūrimo bibliotekos. Patikrink interneto ryšį.'));document.head.appendChild(sc);}); }
+      const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('Siuntos');
+      ws.columns=[{header:'Skenavimo data',key:'date',width:22},{header:'Siuntos kodas',key:'shipment',width:26},{header:'Prekės barkodas',key:'barcode',width:20,style:{numFmt:'@'}},{header:'Kiekis',key:'qty',width:10},{header:'Komentaras',key:'comment',width:38},{header:'Nuotraukos',key:'photos',width:18}];
+      ws.getRow(1).font={bold:true};
+      for(let i=0;i<shipments.length;i++){
+        const sh=shipments[i];
+        for(let j=0;j<sh.items.length;j++){
+          const it=sh.items[j]; const row=ws.addRow({date:sh.time?new Date(sh.time):'',shipment:sh.code,barcode:String(it.code),qty:it.qty,comment:it.comment||'',photos:(it.photos||[]).length?`${it.photos.length} nuotr.`:''});
+          row.getCell(3).numFmt='@'; row.alignment={vertical:'top',wrapText:true}; row.height=(it.photos||[]).length?68:24;
+          (it.photos||[]).forEach((src,k)=>{try{const base64=src.split(',')[1];const imageId=wb.addImage({base64,extension:'jpeg'});ws.addImage(imageId,{tl:{col:5,row:row.number-1},ext:{width:90,height:65},editAs:'oneCell'});}catch(e){}});
+        }
+      }
+      ws.views=[{state:'frozen',ySplit:1}];
+      const buf=await wb.xlsx.writeBuffer(); const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='siuntu_suvestine.xlsx'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1500); setStatus('Excel paruoštas: 6 stulpeliai, kiekviena prekė atskiroje eilutėje.','ok');
+    }catch(e){setStatus('Nepavyko sukurti Excel: '+e.message,'warn');}
+  });
+  $('backup').addEventListener('click',()=>download('siuntu_atsargine_kopija.json',JSON.stringify(shipments,null,2),'application/json'));
+  $('clear').addEventListener('click',()=>{if(confirm('Ar tikrai ištrinti visas siuntas ir prekių kiekius?')){shipments=[];save();render();$('last').textContent='Paskutinis nuskaitymas: –';}});
+  render();
+})();
+</script>
+</body></html>
